@@ -10,15 +10,15 @@
  * may redistribute/modify it under the LGPL 2.1 or MS-PL licenses.
  */
 #region LGPL License
-/* GNU LESSER GENERAL PUBLIC LICENSE version 2.1
+/* GNU LESSER GENERAL internal LICENSE version 2.1
  * LzxDecoder is free software; you can redistribute it and/or modify it under
- * the terms of the GNU Lesser General Public License (LGPL) version 2.1 
+ * the terms of the GNU Lesser General internal License (LGPL) version 2.1 
  */
 #endregion
 #region MS-PL License
 /* 
- * MICROSOFT PUBLIC LICENSE
- * This source code is subject to the terms of the Microsoft Public License (Ms-PL). 
+ * MICROSOFT internal LICENSE
+ * This source code is subject to the terms of the Microsoft internal License (Ms-PL). 
  *  
  * Redistribution and use in source and binary forms, with or without modification, 
  * is permitted provided that redistributions of the source code retain the above 
@@ -46,12 +46,12 @@ namespace Microsoft.Xna.Framework
 
     internal class LzxDecoder
     {
-        public uint[] position_base = null;
-        public byte[] extra_bits = null;
+        internal uint[] position_base = null;
+        internal byte[] extra_bits = null;
 
         private LzxState m_state;
 
-        public LzxDecoder(int window)
+        internal LzxDecoder(int window)
         {
             uint wndsize = (uint)(1 << window);
             int posn_slots;
@@ -116,7 +116,7 @@ namespace Microsoft.Xna.Framework
             for (int i = 0; i < LzxConstants.LENGTH_MAXSYMBOLS; i++) m_state.LENGTH_len[i] = 0;
         }
 
-        public int Decompress(Stream inData, int inLen, Stream outData, int outLen)
+        internal int Decompress(Stream inData, int inLen, Stream outData, int outLen)
         {
             BitBuffer bitbuf = new BitBuffer(inData);
             long startpos = inData.Position;
@@ -660,19 +660,19 @@ namespace Microsoft.Xna.Framework
             byte bitsleft;
             Stream byteStream;
 
-            public BitBuffer(Stream stream)
+            internal BitBuffer(Stream stream)
             {
                 byteStream = stream;
                 InitBitStream();
             }
 
-            public void InitBitStream()
+            internal void InitBitStream()
             {
                 buffer = 0;
                 bitsleft = 0;
             }
 
-            public void EnsureBits(byte bits)
+            internal void EnsureBits(byte bits)
             {
                 while (bitsleft < bits)
                 {
@@ -684,18 +684,18 @@ namespace Microsoft.Xna.Framework
                 }
             }
 
-            public uint PeekBits(byte bits)
+            internal uint PeekBits(byte bits)
             {
                 return (buffer >> ((sizeof(uint) * 8) - bits));
             }
 
-            public void RemoveBits(byte bits)
+            internal void RemoveBits(byte bits)
             {
                 buffer <<= bits;
                 bitsleft -= bits;
             }
 
-            public uint ReadBits(byte bits)
+            internal uint ReadBits(byte bits)
             {
                 uint ret = 0;
 
@@ -709,12 +709,12 @@ namespace Microsoft.Xna.Framework
                 return ret;
             }
 
-            public uint GetBuffer()
+            internal uint GetBuffer()
             {
                 return buffer;
             }
 
-            public byte GetBitsLeft()
+            internal byte GetBitsLeft()
             {
                 return bitsleft;
             }
@@ -723,70 +723,70 @@ namespace Microsoft.Xna.Framework
 
         struct LzxState
         {
-            public uint R0, R1, R2;         /* for the LRU offset system				*/
-            public ushort main_elements;        /* number of main tree elements				*/
-            public int header_read;     /* have we started decoding at all yet? 	*/
-            public LzxConstants.BLOCKTYPE block_type;           /* type of this block						*/
-            public uint block_length;       /* uncompressed length of this block 		*/
-            public uint block_remaining;    /* uncompressed bytes still left to decode	*/
-            public uint frames_read;        /* the number of CFDATA blocks processed	*/
-            public int intel_filesize;      /* magic header value used for transform	*/
-            public int intel_curpos;        /* current offset in transform space		*/
-            public int intel_started;       /* have we seen any translateable data yet?	*/
+            internal uint R0, R1, R2;         /* for the LRU offset system				*/
+            internal ushort main_elements;        /* number of main tree elements				*/
+            internal int header_read;     /* have we started decoding at all yet? 	*/
+            internal LzxConstants.BLOCKTYPE block_type;           /* type of this block						*/
+            internal uint block_length;       /* uncompressed length of this block 		*/
+            internal uint block_remaining;    /* uncompressed bytes still left to decode	*/
+            internal uint frames_read;        /* the number of CFDATA blocks processed	*/
+            internal int intel_filesize;      /* magic header value used for transform	*/
+            internal int intel_curpos;        /* current offset in transform space		*/
+            internal int intel_started;       /* have we seen any translateable data yet?	*/
 
-            public ushort[] PRETREE_table;
-            public byte[] PRETREE_len;
-            public ushort[] MAINTREE_table;
-            public byte[] MAINTREE_len;
-            public ushort[] LENGTH_table;
-            public byte[] LENGTH_len;
-            public ushort[] ALIGNED_table;
-            public byte[] ALIGNED_len;
+            internal ushort[] PRETREE_table;
+            internal byte[] PRETREE_len;
+            internal ushort[] MAINTREE_table;
+            internal byte[] MAINTREE_len;
+            internal ushort[] LENGTH_table;
+            internal byte[] LENGTH_len;
+            internal ushort[] ALIGNED_table;
+            internal byte[] ALIGNED_len;
 
             // NEEDED MEMBERS
             // CAB actualsize
             // CAB window
             // CAB window_size
             // CAB window_posn
-            public uint actual_size;
-            public byte[] window;
-            public uint window_size;
-            public uint window_posn;
+            internal uint actual_size;
+            internal byte[] window;
+            internal uint window_size;
+            internal uint window_posn;
         }
     }
 
     /* CONSTANTS */
     internal struct LzxConstants
     {
-        public const ushort MIN_MATCH = 2;
-        public const ushort MAX_MATCH = 257;
-        public const ushort NUM_CHARS = 256;
-        public enum BLOCKTYPE
+        internal const ushort MIN_MATCH = 2;
+        internal const ushort MAX_MATCH = 257;
+        internal const ushort NUM_CHARS = 256;
+        internal enum BLOCKTYPE
         {
             INVALID = 0,
             VERBATIM = 1,
             ALIGNED = 2,
             UNCOMPRESSED = 3
         }
-        public const ushort PRETREE_NUM_ELEMENTS = 20;
-        public const ushort ALIGNED_NUM_ELEMENTS = 8;
-        public const ushort NUM_PRIMARY_LENGTHS = 7;
-        public const ushort NUM_SECONDARY_LENGTHS = 249;
+        internal const ushort PRETREE_NUM_ELEMENTS = 20;
+        internal const ushort ALIGNED_NUM_ELEMENTS = 8;
+        internal const ushort NUM_PRIMARY_LENGTHS = 7;
+        internal const ushort NUM_SECONDARY_LENGTHS = 249;
 
-        public const ushort PRETREE_MAXSYMBOLS = PRETREE_NUM_ELEMENTS;
-        public const ushort PRETREE_TABLEBITS = 6;
-        public const ushort MAINTREE_MAXSYMBOLS = NUM_CHARS + 50 * 8;
-        public const ushort MAINTREE_TABLEBITS = 12;
-        public const ushort LENGTH_MAXSYMBOLS = NUM_SECONDARY_LENGTHS + 1;
-        public const ushort LENGTH_TABLEBITS = 12;
-        public const ushort ALIGNED_MAXSYMBOLS = ALIGNED_NUM_ELEMENTS;
-        public const ushort ALIGNED_TABLEBITS = 7;
+        internal const ushort PRETREE_MAXSYMBOLS = PRETREE_NUM_ELEMENTS;
+        internal const ushort PRETREE_TABLEBITS = 6;
+        internal const ushort MAINTREE_MAXSYMBOLS = NUM_CHARS + 50 * 8;
+        internal const ushort MAINTREE_TABLEBITS = 12;
+        internal const ushort LENGTH_MAXSYMBOLS = NUM_SECONDARY_LENGTHS + 1;
+        internal const ushort LENGTH_TABLEBITS = 12;
+        internal const ushort ALIGNED_MAXSYMBOLS = ALIGNED_NUM_ELEMENTS;
+        internal const ushort ALIGNED_TABLEBITS = 7;
 
-        public const ushort LENTABLE_SAFETY = 64;
+        internal const ushort LENTABLE_SAFETY = 64;
     }
 
     /* EXCEPTIONS */
-    public class UnsupportedWindowSizeRange : Exception
+    internal class UnsupportedWindowSizeRange : Exception
     {
     }
 }

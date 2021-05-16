@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Cabinet.NET;
+using System;
 using System.Collections.Generic;
 using System.IO;
 
@@ -36,6 +37,8 @@ namespace CabStuff
                 {
                     failedFiles.Add(name);
                 }
+
+                break;
             }
 
             Console.WriteLine("\nFAILEDFILES\n");

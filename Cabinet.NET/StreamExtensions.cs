@@ -1,11 +1,11 @@
 ﻿using System.IO;
 using System.Runtime.InteropServices;
 
-namespace CabStuff
+namespace Cabinet.NET
 {
-    public static class StreamExtensions
+    internal static class StreamExtensions
     {
-        public static T ReadStruct<T>(this Stream stream) where T : struct
+        internal static T ReadStruct<T>(this Stream stream) where T : struct
         {
             var sz = Marshal.SizeOf(typeof(T));
             var buffer = new byte[sz];
@@ -17,7 +17,7 @@ namespace CabStuff
             return structure;
         }
 
-        public static string ReadString(this Stream stream)
+        internal static string ReadString(this Stream stream)
         {
             byte[] nameBuffer = new byte[256];
 
@@ -30,6 +30,23 @@ namespace CabStuff
             }
 
             return System.Text.Encoding.ASCII.GetString(nameBuffer, 0, j);
+        }
+
+        internal static string ReadUTF8tring(this Stream stream)
+        {
+            byte[] nameBuffer = new byte[256];
+
+            int j = 0;
+            for (; j < 256; j++)
+            {
+                nameBuffer[j] = (byte)stream.ReadByte();
+                nameBuffer[j+1] = (byte)stream.ReadByte();
+                stream.Seek(-1, SeekOrigin.Current);
+                if (nameBuffer[j] == 0 && nameBuffer[j+1] == 0)
+                    break;
+            }
+
+            return System.Text.Encoding.UTF8.GetString(nameBuffer, 0, j);
         }
     }
 }

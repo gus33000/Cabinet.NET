@@ -1,10 +1,11 @@
 ﻿using Microsoft.Xna.Framework;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace CabStuff
+namespace Cabinet.NET
 {
     public static class CabinetExtractor
     {
@@ -13,17 +14,14 @@ namespace CabStuff
         /// Because nothing else god damn existed at the time of writing this
         /// and CAB is some archaic format that makes barely any sense in 2021
         /// at least for most people it seems
-        /// TODO: Check header validity
         /// TODO: Multi part
-        /// TODO: Attributes
-        /// TODO: TimeStamps
         /// TODO: CheckSum
         /// Relevant Documentation that might help at 20% only: https://interoperability.blob.core.windows.net/files/Archive_Exchange/%5bMS-CAB%5d.pdf
         /// </summary>
         /// <param name="InputFile">Input cabinet file</param>
         /// <param name="OutputDirectory">Output directory</param>
         /// <param name="WindowSizeLZX">Window Size for LZX Algo (default = 21)</param>
-        public static void ExtractCabinet(string InputFile, string OutputDirectory, int WindowSizeLZX = 21)
+        public static void ExtractCabinet(string InputFile, string OutputDirectory)
         {
             var cabinetFileStream = File.OpenRead(InputFile);
             var cabinetBinaryReader = new BinaryReader(cabinetFileStream);
@@ -33,6 +31,12 @@ namespace CabStuff
             byte cbCFData = 0;
 
             CFHEADER header = cabinetFileStream.ReadStruct<CFHEADER>();
+
+            if (StructuralComparisons.StructuralComparer.Compare(header.signature, new byte[] { (byte)'M', (byte)'S', (byte)'C', (byte)'F' }) != 0)
+            {
+                throw new Exception("Bad Cabinet: Invalid Signature");
+            }
+
             if ((header.flags & CFHEADER.Options.ReservePresent) != 0)
             {
                 cbCFHeader = cabinetBinaryReader.ReadUInt16();
@@ -45,12 +49,16 @@ namespace CabStuff
             {
                 var prevCab = cabinetBinaryReader.BaseStream.ReadString();
                 var prevDisk = cabinetBinaryReader.BaseStream.ReadString();
+
+                throw new Exception("Unsupported Cabinet: Multi Part");
             }
 
             if ((header.flags & CFHEADER.Options.NextCabinet) != 0)
             {
                 var prevCab = cabinetBinaryReader.BaseStream.ReadString();
                 var prevDisk = cabinetBinaryReader.BaseStream.ReadString();
+
+                throw new Exception("Unsupported Cabinet: Multi Part");
             }
 
             List<CFFOLDER> folders = new List<CFFOLDER>();
@@ -61,17 +69,25 @@ namespace CabStuff
                 folders.Add(folder);
 
                 if (folder.typeCompress != CFFOLDER.CFTYPECOMPRESS.TYPE_LZX && folder.typeCompress != CFFOLDER.CFTYPECOMPRESS.TYPE_NONE)
-                    throw new Exception("Unsupported");
+                {
+                    throw new Exception("Unsupported Cabinet: Only LZX and Store is currently supported");
+                }
             }
 
             if (cabinetBinaryReader.BaseStream.Position != header.coffFiles)
-                throw new Exception("Unsupported 2");
+            {
+                throw new Exception("Bad Cabinet: First File Block does not match header");
+            }
 
             List<(CFFILE file, string fileName)> files = new List<(CFFILE file, string fileName)>();
             for (int i = 0; i < header.cFiles; i++)
             {
                 CFFILE file = cabinetBinaryReader.BaseStream.ReadStruct<CFFILE>();
-                var name = cabinetBinaryReader.BaseStream.ReadString();
+                string name = "";
+                if (file.IsFileNameUTF8())
+                    name = cabinetBinaryReader.BaseStream.ReadUTF8tring();
+                else
+                    name = cabinetBinaryReader.BaseStream.ReadString();
                 files.Add((file, name));
             }
 
@@ -91,10 +107,15 @@ namespace CabStuff
             // Do the extraction
             for (int i1 = 0; i1 < folders.Count; i1++)
             {
-                var lzx = new LzxDecoder(WindowSizeLZX);
-
                 CFFOLDER folder = folders[i1];
                 cabinetFileStream.Seek(folder.firstDataBlockOffset, SeekOrigin.Begin);
+
+                LzxDecoder lzx = null;
+                if (folder.typeCompress == CFFOLDER.CFTYPECOMPRESS.TYPE_LZX)
+                {
+                    //Console.WriteLine("LZX Detected with Window Size of: " + folder.typeCompressOption);
+                    lzx = new LzxDecoder(folder.typeCompressOption);
+                }
 
                 // Build Data Map
                 List<(CFDATA dataStruct, int dataOffsetCabinet, int beginFolderOffset, int endFolderOffset, int index)> datas = new List<(CFDATA dataStruct, int dataOffsetCabinet, int beginFolderOffset, int endFolderOffset, int index)>();
@@ -132,12 +153,12 @@ namespace CabStuff
 
                     fileBlockMap.Add((file, name, FirstBlock.index, start, LastBlock.index, end));
 
-                    Console.WriteLine($"[{FirstBlock.index}({start})..{LastBlock.index}({end})] {name}");
+                    //Console.WriteLine($"[{FirstBlock.index}({start})..{LastBlock.index}({end})] {name}");
                 }
 
                 for (int i = 0; i < folder.dataBlockCount; i++)
                 {
-                    Console.WriteLine($"Begin Reading Block[{i}]");
+                    //Console.WriteLine($"Begin Reading Block[{i}]");
 
                     var CabinetData = datas[i];
 
@@ -164,7 +185,7 @@ namespace CabStuff
                             }
                     }
 
-                    Console.WriteLine($"End Reading Block[{i}]");
+                    //Console.WriteLine($"End Reading Block[{i}]");
 
                     foreach ((CFFILE file, string name) in files)
                     {
@@ -176,11 +197,7 @@ namespace CabStuff
                         // This block contains this file
                         if (mapping.startingBlock <= i && i <= mapping.endingBlock)
                         {
-                            Console.WriteLine("Expanding " + mapping.fileName);
-
-                            string destination = Path.Combine(OutputDirectory, name);
-                            using var uncompressedDataStream = File.Open(destination, FileMode.OpenOrCreate);
-                            uncompressedDataStream.Seek(0, SeekOrigin.End);
+                            //Console.WriteLine("Expanding " + mapping.fileName);
 
                             int start = 0;
                             int end = CabinetData.dataStruct.cbUncomp - 1;
@@ -198,11 +215,23 @@ namespace CabStuff
                                 end = mapping.endingBlockOffset;
                             }
 
-                            Console.WriteLine($"Expanding [s:{start}][e:{end}] {destination}");
-
                             int count = end - start + 1;
 
-                            uncompressedDataStream.Write(uncompressedDataBlock, start, count);
+                            string destination = Path.Combine(OutputDirectory, name);
+                            using (var uncompressedDataStream = File.Open(destination, FileMode.OpenOrCreate))
+                            {
+                                uncompressedDataStream.Seek(0, SeekOrigin.End);
+                                uncompressedDataStream.Write(uncompressedDataBlock, start, count);
+                            }
+
+                            if (IsLastBlock)
+                            {
+                                File.SetAttributes(destination, file.GetFileAttributes());
+                                var dt = file.GetDateTime();
+                                File.SetCreationTimeUtc(destination, dt);
+                                File.SetLastWriteTimeUtc(destination, dt);
+                                File.SetLastAccessTimeUtc(destination, dt);
+                            }
                         }
                     }
                 }

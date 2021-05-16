@@ -3,7 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.31306.274
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CabStuff", "CabStuff\CabStuff.csproj", "{2B0849FE-4DFF-4DC2-B401-6F8C30D39E6E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Test", "Test\Test.csproj", "{2B0849FE-4DFF-4DC2-B401-6F8C30D39E6E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cabinet.NET", "Cabinet.NET\Cabinet.NET.csproj", "{3610C206-3F11-44E6-A99C-C555A93BE74E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +17,10 @@ Global
 		{2B0849FE-4DFF-4DC2-B401-6F8C30D39E6E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2B0849FE-4DFF-4DC2-B401-6F8C30D39E6E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2B0849FE-4DFF-4DC2-B401-6F8C30D39E6E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3610C206-3F11-44E6-A99C-C555A93BE74E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3610C206-3F11-44E6-A99C-C555A93BE74E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3610C206-3F11-44E6-A99C-C555A93BE74E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3610C206-3F11-44E6-A99C-C555A93BE74E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
