@@ -20,7 +20,6 @@ namespace Cabinet.NET
         /// </summary>
         /// <param name="InputFile">Input cabinet file</param>
         /// <param name="OutputDirectory">Output directory</param>
-        /// <param name="WindowSizeLZX">Window Size for LZX Algo (default = 21)</param>
         public static void ExtractCabinet(string InputFile, string OutputDirectory, Action<string> progressCallBack)
         {
             var cabinetFileStream = File.OpenRead(InputFile);
