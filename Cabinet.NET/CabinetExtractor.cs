@@ -72,6 +72,15 @@ namespace Cabinet.NET
                 {
                     throw new Exception("Unsupported Cabinet: Only LZX and Store is currently supported");
                 }
+
+                if (folder.typeCompress == CFFOLDER.CFTYPECOMPRESS.TYPE_LZX)
+                {
+                    //Console.WriteLine("LZX Detected with Window Size of: " + folder.typeCompressOption);
+                    if (folder.typeCompressOption < 15 || folder.typeCompressOption > 21)
+                    {
+                        throw new Exception("Unsupported Cabinet: LZX variable does not fall in supported ranges");
+                    }
+                }
             }
 
             if (cabinetBinaryReader.BaseStream.Position != header.coffFiles)
@@ -113,7 +122,6 @@ namespace Cabinet.NET
                 LzxDecoder lzx = null;
                 if (folder.typeCompress == CFFOLDER.CFTYPECOMPRESS.TYPE_LZX)
                 {
-                    //Console.WriteLine("LZX Detected with Window Size of: " + folder.typeCompressOption);
                     lzx = new LzxDecoder(folder.typeCompressOption);
                 }
 
