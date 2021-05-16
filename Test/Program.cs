@@ -15,30 +15,29 @@ namespace CabStuff
 
             List<string> failedFiles = new List<string>();
 
-            foreach (var input in Directory.EnumerateFiles(@"D:\Backup\win-x64\10.0.21382.1.co_release.210511-1416_arm64fre_e5c131864586\FeaturesOnDemand\neutral\cabs", "*.cab"))
+            //foreach (var input in Directory.EnumerateFiles(@"D:\Backup\win-x64\10.0.21382.1.co_release.210511-1416_arm64fre_e5c131864586\FeaturesOnDemand\neutral\cabs", "*.cab"))
             {
+                string input = "C:\\Users\\Gus\\AppData\\Local\\Temp\\tmp82C3.tmp";
                 bool PASS = true;
                 string name = Path.GetFileName(input);
                 string output = Path.Combine(outputDir, name);
 
-                try
+                //try
                 {
                     CabinetExtractor.ExtractCabinet(input, output);
                 }
-                catch (Exception ex)
+                /*catch (Exception ex)
                 {
                     Console.ForegroundColor = ConsoleColor.Red;
                     Console.WriteLine(ex.ToString());
                     Console.ForegroundColor = ConsoleColor.White;
                     PASS = false;
-                }
+                }*/
 
                 if (!PASS)
                 {
                     failedFiles.Add(name);
                 }
-
-                break;
             }
 
             Console.WriteLine("\nFAILEDFILES\n");

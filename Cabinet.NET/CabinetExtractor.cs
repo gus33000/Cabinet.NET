@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 
 namespace Cabinet.NET
@@ -56,9 +57,11 @@ namespace Cabinet.NET
                     cabinetBinaryReader.BaseStream.Seek(cbCFFolder, SeekOrigin.Current);
                     folders.Add(folder);
 
-                    if (folder.typeCompress != CFFOLDER.CFTYPECOMPRESS.TYPE_LZX && folder.typeCompress != CFFOLDER.CFTYPECOMPRESS.TYPE_NONE)
+                    if (folder.typeCompress != CFFOLDER.CFTYPECOMPRESS.TYPE_LZX &&
+                        folder.typeCompress != CFFOLDER.CFTYPECOMPRESS.TYPE_MSZIP &&
+                        folder.typeCompress != CFFOLDER.CFTYPECOMPRESS.TYPE_NONE)
                     {
-                        throw new Exception("Unsupported Cabinet: Only LZX and Store is currently supported");
+                        throw new Exception("Unsupported Cabinet: Only LZX, MSZip and Store is currently supported");
                     }
 
                     if (folder.typeCompress == CFFOLDER.CFTYPECOMPRESS.TYPE_LZX)
@@ -151,9 +154,11 @@ namespace Cabinet.NET
                     cabinetBinaryReader.BaseStream.Seek(cbCFFolder, SeekOrigin.Current);
                     folders.Add(folder);
 
-                    if (folder.typeCompress != CFFOLDER.CFTYPECOMPRESS.TYPE_LZX && folder.typeCompress != CFFOLDER.CFTYPECOMPRESS.TYPE_NONE)
+                    if (folder.typeCompress != CFFOLDER.CFTYPECOMPRESS.TYPE_LZX &&
+                        folder.typeCompress != CFFOLDER.CFTYPECOMPRESS.TYPE_MSZIP &&
+                        folder.typeCompress != CFFOLDER.CFTYPECOMPRESS.TYPE_NONE)
                     {
-                        throw new Exception("Unsupported Cabinet: Only LZX and Store is currently supported");
+                        throw new Exception("Unsupported Cabinet: Only LZX, MSZip and Store is currently supported");
                     }
 
                     if (folder.typeCompress == CFFOLDER.CFTYPECOMPRESS.TYPE_LZX)
@@ -256,7 +261,24 @@ namespace Cabinet.NET
                         cabinetBinaryReader.BaseStream.Seek(CabinetData.dataOffsetCabinet, SeekOrigin.Begin);
 
                         byte[] uncompressedDataBlock = new byte[CabinetData.dataStruct.cbUncomp];
-                        byte[] compressedDataBlock = cabinetBinaryReader.ReadBytes(CabinetData.dataStruct.cbData);
+                        byte[] compressedDataBlock = null;
+
+                        if (folder.typeCompress == CFFOLDER.CFTYPECOMPRESS.TYPE_MSZIP)
+                        {
+                            var magic = cabinetBinaryReader.ReadBytes(2);
+
+                            if (StructuralComparisons.StructuralComparer.Compare(magic, new byte[] { (byte)'C', (byte)'K' }) != 0)
+                            {
+                                throw new Exception("Bad Cabinet: Invalid Signature for MSZIP block");
+                            }
+
+                            compressedDataBlock = cabinetBinaryReader.ReadBytes(CabinetData.dataStruct.cbData - 2);
+                        }
+                        else
+                        {
+                            compressedDataBlock = cabinetBinaryReader.ReadBytes(CabinetData.dataStruct.cbData);
+                        }
+
                         using (var uncompressedDataBlockStream = new MemoryStream(uncompressedDataBlock))
                         using (var compressedDataBlockStream = new MemoryStream(compressedDataBlock))
                         {
@@ -271,6 +293,15 @@ namespace Cabinet.NET
                                 case CFFOLDER.CFTYPECOMPRESS.TYPE_NONE:
                                     {
                                         compressedDataBlockStream.CopyTo(uncompressedDataBlockStream);
+                                        break;
+                                    }
+                                case CFFOLDER.CFTYPECOMPRESS.TYPE_MSZIP:
+                                    {
+                                        using (var mszip = new DeflateStream(compressedDataBlockStream, CompressionMode.Decompress))
+                                        {
+                                            mszip.CopyTo(uncompressedDataBlockStream);
+                                        }
+
                                         break;
                                     }
                             }
@@ -379,9 +410,11 @@ namespace Cabinet.NET
                     cabinetBinaryReader.BaseStream.Seek(cbCFFolder, SeekOrigin.Current);
                     folders.Add(folder);
 
-                    if (folder.typeCompress != CFFOLDER.CFTYPECOMPRESS.TYPE_LZX && folder.typeCompress != CFFOLDER.CFTYPECOMPRESS.TYPE_NONE)
+                    if (folder.typeCompress != CFFOLDER.CFTYPECOMPRESS.TYPE_LZX &&
+                        folder.typeCompress != CFFOLDER.CFTYPECOMPRESS.TYPE_MSZIP &&
+                        folder.typeCompress != CFFOLDER.CFTYPECOMPRESS.TYPE_NONE)
                     {
-                        throw new Exception("Unsupported Cabinet: Only LZX and Store is currently supported");
+                        throw new Exception("Unsupported Cabinet: Only LZX, MSZip and Store is currently supported");
                     }
 
                     if (folder.typeCompress == CFFOLDER.CFTYPECOMPRESS.TYPE_LZX)
@@ -413,119 +446,146 @@ namespace Cabinet.NET
                         files.Add((file, name));
                 }
 
-                byte[] data = new byte[files[0].file.cbFile];
-                using (var uncompressedDataStream = new MemoryStream(data))
+                var destination = Path.GetTempFileName();
+
+                // Do the extraction
+                for (int i1 = 0; i1 < folders.Count; i1++)
                 {
-                    // Do the extraction
-                    for (int i1 = 0; i1 < folders.Count; i1++)
+                    CFFOLDER folder = folders[i1];
+                    cabinetFileStream.Seek(folder.firstDataBlockOffset, SeekOrigin.Begin);
+
+                    LzxDecoder lzx = null;
+                    if (folder.typeCompress == CFFOLDER.CFTYPECOMPRESS.TYPE_LZX)
                     {
-                        CFFOLDER folder = folders[i1];
-                        cabinetFileStream.Seek(folder.firstDataBlockOffset, SeekOrigin.Begin);
+                        lzx = new LzxDecoder(folder.typeCompressOption);
+                    }
 
-                        LzxDecoder lzx = null;
-                        if (folder.typeCompress == CFFOLDER.CFTYPECOMPRESS.TYPE_LZX)
+                    // Build Data Map
+                    List<(CFDATA dataStruct, int dataOffsetCabinet, int beginFolderOffset, int endFolderOffset, int index)> datas = new List<(CFDATA dataStruct, int dataOffsetCabinet, int beginFolderOffset, int endFolderOffset, int index)>();
+
+                    int offset = 0;
+                    for (int i = 0; i < folder.dataBlockCount; i++)
+                    {
+                        CFDATA CabinetData = cabinetBinaryReader.BaseStream.ReadStruct<CFDATA>();
+                        cabinetBinaryReader.BaseStream.Seek(cbCFData, SeekOrigin.Current);
+                        datas.Add((CabinetData, (int)cabinetBinaryReader.BaseStream.Position, offset, offset + CabinetData.cbUncomp - 1, i));
+                        cabinetBinaryReader.BaseStream.Seek(CabinetData.cbData, SeekOrigin.Current);
+                        offset += CabinetData.cbUncomp;
+                    }
+
+                    List<(CFFILE file, string fileName, int startingBlock, int startingBlockOffset, int endingBlock, int endingBlockOffset)> fileBlockMap = new List<(CFFILE file, string fileName, int startingBlock, int startingBlockOffset, int endingBlock, int endingBlockOffset)>();
+
+                    // Build Block Map
+                    foreach ((CFFILE file, string name) in files)
+                    {
+                        if (file.iFolder != i1)
+                            continue;
+
+                        var FirstBlock = datas.First(x => x.beginFolderOffset <= file.uoffFolderStart &&
+                                                            file.uoffFolderStart <= x.endFolderOffset);
+                        var LastBlock = datas.First(x => x.beginFolderOffset <= (file.uoffFolderStart + file.cbFile - 1) &&
+                                                            (file.uoffFolderStart + file.cbFile - 1) <= x.endFolderOffset);
+
+                        int fileBeginFolderOffset = (int)file.uoffFolderStart;
+                        int fileEndFolderOffset = (int)file.uoffFolderStart + (int)file.cbFile - 1;
+
+                        int start = (int)file.uoffFolderStart - FirstBlock.beginFolderOffset;
+                        int end = fileEndFolderOffset - LastBlock.beginFolderOffset;
+
+                        fileBlockMap.Add((file, name, FirstBlock.index, start, LastBlock.index, end));
+
+                        //Console.WriteLine($"[{FirstBlock.index}({start})..{LastBlock.index}({end})] {name}");
+                    }
+
+                    for (int i = 0; i < folder.dataBlockCount; i++)
+                    {
+                        //Console.WriteLine($"Begin Reading Block[{i}]");
+
+                        var CabinetData = datas[i];
+
+                        cabinetBinaryReader.BaseStream.Seek(CabinetData.dataOffsetCabinet, SeekOrigin.Begin);
+
+                        byte[] uncompressedDataBlock = new byte[CabinetData.dataStruct.cbUncomp];
+                        byte[] compressedDataBlock = null;
+
+                        if (folder.typeCompress == CFFOLDER.CFTYPECOMPRESS.TYPE_MSZIP)
                         {
-                            lzx = new LzxDecoder(folder.typeCompressOption);
+                            var magic = cabinetBinaryReader.ReadBytes(2);
+
+                            if (StructuralComparisons.StructuralComparer.Compare(magic, new byte[] { (byte)'C', (byte)'K' }) != 0)
+                            {
+                                throw new Exception("Bad Cabinet: Invalid Signature for MSZIP block");
+                            }
+
+                            compressedDataBlock = cabinetBinaryReader.ReadBytes(CabinetData.dataStruct.cbData - 2);
+                        }
+                        else
+                        {
+                            compressedDataBlock = cabinetBinaryReader.ReadBytes(CabinetData.dataStruct.cbData);
                         }
 
-                        // Build Data Map
-                        List<(CFDATA dataStruct, int dataOffsetCabinet, int beginFolderOffset, int endFolderOffset, int index)> datas = new List<(CFDATA dataStruct, int dataOffsetCabinet, int beginFolderOffset, int endFolderOffset, int index)>();
-
-                        int offset = 0;
-                        for (int i = 0; i < folder.dataBlockCount; i++)
+                        using (var uncompressedDataBlockStream = new MemoryStream(uncompressedDataBlock))
+                        using (var compressedDataBlockStream = new MemoryStream(compressedDataBlock))
                         {
-                            CFDATA CabinetData = cabinetBinaryReader.BaseStream.ReadStruct<CFDATA>();
-                            cabinetBinaryReader.BaseStream.Seek(cbCFData, SeekOrigin.Current);
-                            datas.Add((CabinetData, (int)cabinetBinaryReader.BaseStream.Position, offset, offset + CabinetData.cbUncomp - 1, i));
-                            cabinetBinaryReader.BaseStream.Seek(CabinetData.cbData, SeekOrigin.Current);
-                            offset += CabinetData.cbUncomp;
+                            switch (folder.typeCompress)
+                            {
+                                case CFFOLDER.CFTYPECOMPRESS.TYPE_LZX:
+                                    {
+                                        lzx.Decompress(compressedDataBlockStream, (int)compressedDataBlockStream.Length, uncompressedDataBlockStream, (int)uncompressedDataBlockStream.Length);
+                                        break;
+                                    }
+
+                                case CFFOLDER.CFTYPECOMPRESS.TYPE_NONE:
+                                    {
+                                        compressedDataBlockStream.CopyTo(uncompressedDataBlockStream);
+                                        break;
+                                    }
+                                case CFFOLDER.CFTYPECOMPRESS.TYPE_MSZIP:
+                                    {
+                                        using (var mszip = new DeflateStream(compressedDataBlockStream, CompressionMode.Decompress))
+                                        {
+                                            mszip.CopyTo(uncompressedDataBlockStream);
+                                        }
+
+                                        break;
+                                    }
+                            }
                         }
 
-                        List<(CFFILE file, string fileName, int startingBlock, int startingBlockOffset, int endingBlock, int endingBlockOffset)> fileBlockMap = new List<(CFFILE file, string fileName, int startingBlock, int startingBlockOffset, int endingBlock, int endingBlockOffset)>();
+                        //Console.WriteLine($"End Reading Block[{i}]");
 
-                        // Build Block Map
                         foreach ((CFFILE file, string name) in files)
                         {
                             if (file.iFolder != i1)
                                 continue;
 
-                            var FirstBlock = datas.First(x => x.beginFolderOffset <= file.uoffFolderStart &&
-                                                                file.uoffFolderStart <= x.endFolderOffset);
-                            var LastBlock = datas.First(x => x.beginFolderOffset <= (file.uoffFolderStart + file.cbFile - 1) &&
-                                                                (file.uoffFolderStart + file.cbFile - 1) <= x.endFolderOffset);
+                            var mapping = fileBlockMap.First(x => x.fileName == name);
 
-                            int fileBeginFolderOffset = (int)file.uoffFolderStart;
-                            int fileEndFolderOffset = (int)file.uoffFolderStart + (int)file.cbFile - 1;
-
-                            int start = (int)file.uoffFolderStart - FirstBlock.beginFolderOffset;
-                            int end = fileEndFolderOffset - LastBlock.beginFolderOffset;
-
-                            fileBlockMap.Add((file, name, FirstBlock.index, start, LastBlock.index, end));
-
-                            //Console.WriteLine($"[{FirstBlock.index}({start})..{LastBlock.index}({end})] {name}");
-                        }
-
-                        for (int i = 0; i < folder.dataBlockCount; i++)
-                        {
-                            //Console.WriteLine($"Begin Reading Block[{i}]");
-
-                            var CabinetData = datas[i];
-
-                            cabinetBinaryReader.BaseStream.Seek(CabinetData.dataOffsetCabinet, SeekOrigin.Begin);
-
-                            byte[] uncompressedDataBlock = new byte[CabinetData.dataStruct.cbUncomp];
-                            byte[] compressedDataBlock = cabinetBinaryReader.ReadBytes(CabinetData.dataStruct.cbData);
-                            using (var uncompressedDataBlockStream = new MemoryStream(uncompressedDataBlock))
-                            using (var compressedDataBlockStream = new MemoryStream(compressedDataBlock))
+                            // This block contains this file
+                            if (mapping.startingBlock <= i && i <= mapping.endingBlock)
                             {
-                                switch (folder.typeCompress)
-                                {
-                                    case CFFOLDER.CFTYPECOMPRESS.TYPE_LZX:
-                                        {
-                                            lzx.Decompress(compressedDataBlockStream, (int)compressedDataBlockStream.Length, uncompressedDataBlockStream, (int)uncompressedDataBlockStream.Length);
-                                            break;
-                                        }
+                                //Console.WriteLine("Expanding " + mapping.fileName);
 
-                                    case CFFOLDER.CFTYPECOMPRESS.TYPE_NONE:
-                                        {
-                                            compressedDataBlockStream.CopyTo(uncompressedDataBlockStream);
-                                            break;
-                                        }
+                                int start = 0;
+                                int end = CabinetData.dataStruct.cbUncomp - 1;
+
+                                bool IsFirstBlock = mapping.startingBlock == i;
+                                bool IsLastBlock = mapping.endingBlock == i;
+
+                                if (IsFirstBlock)
+                                {
+                                    start = mapping.startingBlockOffset;
                                 }
-                            }
 
-                            //Console.WriteLine($"End Reading Block[{i}]");
-
-                            foreach ((CFFILE file, string name) in files)
-                            {
-                                if (file.iFolder != i1)
-                                    continue;
-
-                                var mapping = fileBlockMap.First(x => x.fileName == name);
-
-                                // This block contains this file
-                                if (mapping.startingBlock <= i && i <= mapping.endingBlock)
+                                if (IsLastBlock)
                                 {
-                                    //Console.WriteLine("Expanding " + mapping.fileName);
+                                    end = mapping.endingBlockOffset;
+                                }
 
-                                    int start = 0;
-                                    int end = CabinetData.dataStruct.cbUncomp - 1;
+                                int count = end - start + 1;
 
-                                    bool IsFirstBlock = mapping.startingBlock == i;
-                                    bool IsLastBlock = mapping.endingBlock == i;
-
-                                    if (IsFirstBlock)
-                                    {
-                                        start = mapping.startingBlockOffset;
-                                    }
-
-                                    if (IsLastBlock)
-                                    {
-                                        end = mapping.endingBlockOffset;
-                                    }
-
-                                    int count = end - start + 1;
-
+                                using (var uncompressedDataStream = File.Open(destination, FileMode.OpenOrCreate))
+                                {
                                     uncompressedDataStream.Seek(0, SeekOrigin.End);
                                     uncompressedDataStream.Write(uncompressedDataBlock, start, count);
                                 }
@@ -534,7 +594,7 @@ namespace Cabinet.NET
                     }
                 }
 
-                return data;
+                return File.ReadAllBytes(destination);
             }
         }
     }
