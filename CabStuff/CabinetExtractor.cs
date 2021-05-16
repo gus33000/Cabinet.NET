@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.Xna.Framework;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -97,6 +98,8 @@ namespace CabStuff
 
                 // Build Data Map
                 List<(CFDATA dataStruct, int dataOffsetCabinet, int beginFolderOffset, int endFolderOffset, int index)> datas = new List<(CFDATA dataStruct, int dataOffsetCabinet, int beginFolderOffset, int endFolderOffset, int index)>();
+
+                using var memStrm = new MemoryStream();
 
                 int offset = 0;
                 for (int i = 0; i < folder.dataBlockCount; i++)
