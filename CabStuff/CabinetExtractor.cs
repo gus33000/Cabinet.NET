@@ -1,0 +1,209 @@
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+
+namespace CabStuff
+{
+    public static class CabinetExtractor
+    {
+        /// <summary>
+        /// Expands a cabinet file in pure C# (TM)
+        /// Because nothing else god damn existed at the time of writing this
+        /// and CAB is some archaic format that makes barely any sense in 2021
+        /// at least for most people it seems
+        /// TODO: Check header validity
+        /// TODO: Multi part
+        /// TODO: Attributes
+        /// TODO: TimeStamps
+        /// TODO: CheckSum
+        /// Relevant Documentation that might help at 20% only: https://interoperability.blob.core.windows.net/files/Archive_Exchange/%5bMS-CAB%5d.pdf
+        /// </summary>
+        /// <param name="InputFile">Input cabinet file</param>
+        /// <param name="OutputDirectory">Output directory</param>
+        /// <param name="WindowSizeLZX">Window Size for LZX Algo (default = 21)</param>
+        public static void ExtractCabinet(string InputFile, string OutputDirectory, int WindowSizeLZX = 21)
+        {
+            var cabinetFileStream = File.OpenRead(InputFile);
+            var cabinetBinaryReader = new BinaryReader(cabinetFileStream);
+
+            ushort cbCFHeader = 0;
+            byte cbCFFolder = 0;
+            byte cbCFData = 0;
+
+            CFHEADER header = cabinetFileStream.ReadStruct<CFHEADER>();
+            if ((header.flags & CFHEADER.Options.ReservePresent) != 0)
+            {
+                cbCFHeader = cabinetBinaryReader.ReadUInt16();
+                cbCFFolder = cabinetBinaryReader.ReadByte();
+                cbCFData = cabinetBinaryReader.ReadByte();
+                cabinetBinaryReader.BaseStream.Seek(cbCFHeader, SeekOrigin.Current);
+            }
+
+            if ((header.flags & CFHEADER.Options.PreviousCabinet) != 0)
+            {
+                var prevCab = cabinetBinaryReader.BaseStream.ReadString();
+                var prevDisk = cabinetBinaryReader.BaseStream.ReadString();
+            }
+
+            if ((header.flags & CFHEADER.Options.NextCabinet) != 0)
+            {
+                var prevCab = cabinetBinaryReader.BaseStream.ReadString();
+                var prevDisk = cabinetBinaryReader.BaseStream.ReadString();
+            }
+
+            List<CFFOLDER> folders = new List<CFFOLDER>();
+            for (int i = 0; i < header.cFolders; i++)
+            {
+                CFFOLDER folder = cabinetFileStream.ReadStruct<CFFOLDER>();
+                cabinetBinaryReader.BaseStream.Seek(cbCFFolder, SeekOrigin.Current);
+                folders.Add(folder);
+
+                if (folder.typeCompress != CFFOLDER.CFTYPECOMPRESS.TYPE_LZX && folder.typeCompress != CFFOLDER.CFTYPECOMPRESS.TYPE_NONE)
+                    throw new Exception("Unsupported");
+            }
+
+            if (cabinetBinaryReader.BaseStream.Position != header.coffFiles)
+                throw new Exception("Unsupported 2");
+
+            List<(CFFILE file, string fileName)> files = new List<(CFFILE file, string fileName)>();
+            for (int i = 0; i < header.cFiles; i++)
+            {
+                CFFILE file = cabinetBinaryReader.BaseStream.ReadStruct<CFFILE>();
+                var name = cabinetBinaryReader.BaseStream.ReadString();
+                files.Add((file, name));
+            }
+
+            // Cleanup existing files
+            foreach ((CFFILE file, string name) in files)
+            {
+                string destination = Path.Combine(OutputDirectory, name);
+                if (!Directory.Exists(Path.GetDirectoryName(destination)))
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(destination));
+                }
+
+                if (File.Exists(destination))
+                    File.Delete(destination);
+            }
+
+            // Do the extraction
+            for (int i1 = 0; i1 < folders.Count; i1++)
+            {
+                var lzx = new LzxDecoder(WindowSizeLZX);
+
+                CFFOLDER folder = folders[i1];
+                cabinetFileStream.Seek(folder.firstDataBlockOffset, SeekOrigin.Begin);
+
+                // Build Data Map
+                List<(CFDATA dataStruct, int dataOffsetCabinet, int beginFolderOffset, int endFolderOffset, int index)> datas = new List<(CFDATA dataStruct, int dataOffsetCabinet, int beginFolderOffset, int endFolderOffset, int index)>();
+
+                int offset = 0;
+                for (int i = 0; i < folder.dataBlockCount; i++)
+                {
+                    CFDATA CabinetData = cabinetBinaryReader.BaseStream.ReadStruct<CFDATA>();
+                    cabinetBinaryReader.BaseStream.Seek(cbCFData, SeekOrigin.Current);
+                    datas.Add((CabinetData, (int)cabinetBinaryReader.BaseStream.Position, offset, offset + CabinetData.cbUncomp - 1, i));
+                    cabinetBinaryReader.BaseStream.Seek(CabinetData.cbData, SeekOrigin.Current);
+                    offset += CabinetData.cbUncomp;
+                }
+
+                List<(CFFILE file, string fileName, int startingBlock, int startingBlockOffset, int endingBlock, int endingBlockOffset)> fileBlockMap = new List<(CFFILE file, string fileName, int startingBlock, int startingBlockOffset, int endingBlock, int endingBlockOffset)>();
+
+                // Build Block Map
+                foreach ((CFFILE file, string name) in files)
+                {
+                    if (file.iFolder != i1)
+                        continue;
+
+                    var FirstBlock = datas.First(x => x.beginFolderOffset <= file.uoffFolderStart &&
+                                                        file.uoffFolderStart <= x.endFolderOffset);
+                    var LastBlock = datas.First(x => x.beginFolderOffset <= (file.uoffFolderStart + file.cbFile - 1) &&
+                                                        (file.uoffFolderStart + file.cbFile - 1) <= x.endFolderOffset);
+
+                    int fileBeginFolderOffset = (int)file.uoffFolderStart;
+                    int fileEndFolderOffset = (int)file.uoffFolderStart + (int)file.cbFile - 1;
+
+                    int start = (int)file.uoffFolderStart - FirstBlock.beginFolderOffset;
+                    int end = fileEndFolderOffset - LastBlock.beginFolderOffset;
+
+                    fileBlockMap.Add((file, name, FirstBlock.index, start, LastBlock.index, end));
+
+                    Console.WriteLine($"[{FirstBlock.index}({start})..{LastBlock.index}({end})] {name}");
+                }
+
+                for (int i = 0; i < folder.dataBlockCount; i++)
+                {
+                    Console.WriteLine($"Begin Reading Block[{i}]");
+
+                    var CabinetData = datas[i];
+
+                    cabinetBinaryReader.BaseStream.Seek(CabinetData.dataOffsetCabinet, SeekOrigin.Begin);
+
+                    byte[] uncompressedDataBlock = new byte[CabinetData.dataStruct.cbUncomp];
+                    using var uncompressedDataBlockStream = new MemoryStream(uncompressedDataBlock);
+
+                    byte[] compressedDataBlock = cabinetBinaryReader.ReadBytes(CabinetData.dataStruct.cbData);
+                    using var compressedDataBlockStream = new MemoryStream(compressedDataBlock);
+
+                    switch (folder.typeCompress)
+                    {
+                        case CFFOLDER.CFTYPECOMPRESS.TYPE_LZX:
+                            {
+                                lzx.Decompress(compressedDataBlockStream, (int)compressedDataBlockStream.Length, uncompressedDataBlockStream, (int)uncompressedDataBlockStream.Length);
+                                break;
+                            }
+
+                        case CFFOLDER.CFTYPECOMPRESS.TYPE_NONE:
+                            {
+                                compressedDataBlockStream.CopyTo(uncompressedDataBlockStream);
+                                break;
+                            }
+                    }
+
+                    Console.WriteLine($"End Reading Block[{i}]");
+
+                    foreach ((CFFILE file, string name) in files)
+                    {
+                        if (file.iFolder != i1)
+                            continue;
+
+                        var mapping = fileBlockMap.First(x => x.fileName == name);
+
+                        // This block contains this file
+                        if (mapping.startingBlock <= i && i <= mapping.endingBlock)
+                        {
+                            Console.WriteLine("Expanding " + mapping.fileName);
+
+                            string destination = Path.Combine(OutputDirectory, name);
+                            using var uncompressedDataStream = File.Open(destination, FileMode.OpenOrCreate);
+                            uncompressedDataStream.Seek(0, SeekOrigin.End);
+
+                            int start = 0;
+                            int end = CabinetData.dataStruct.cbUncomp - 1;
+
+                            bool IsFirstBlock = mapping.startingBlock == i;
+                            bool IsLastBlock = mapping.endingBlock == i;
+
+                            if (IsFirstBlock)
+                            {
+                                start = mapping.startingBlockOffset;
+                            }
+
+                            if (IsLastBlock)
+                            {
+                                end = mapping.endingBlockOffset;
+                            }
+
+                            Console.WriteLine($"Expanding [s:{start}][e:{end}] {destination}");
+
+                            int count = end - start + 1;
+
+                            uncompressedDataStream.Write(uncompressedDataBlock, start, count);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
