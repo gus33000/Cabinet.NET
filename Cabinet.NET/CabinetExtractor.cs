@@ -20,7 +20,7 @@ namespace Cabinet.NET
         /// </summary>
         /// <param name="InputFile">Input cabinet file</param>
         /// <param name="OutputDirectory">Output directory</param>
-        public static void ExtractCabinet(string InputFile, string OutputDirectory, Action<string> progressCallBack)
+        public static void ExtractCabinet(string InputFile, string OutputDirectory, Action<string> progressCallBack = null)
         {
             var cabinetFileStream = File.OpenRead(InputFile);
             var cabinetBinaryReader = new BinaryReader(cabinetFileStream);
