@@ -21,7 +21,7 @@ namespace Cabinet.NET
         /// <param name="InputFile">Input cabinet file</param>
         /// <param name="OutputDirectory">Output directory</param>
         /// <param name="WindowSizeLZX">Window Size for LZX Algo (default = 21)</param>
-        public static void ExtractCabinet(string InputFile, string OutputDirectory)
+        public static void ExtractCabinet(string InputFile, string OutputDirectory, Action<string> progressCallBack)
         {
             var cabinetFileStream = File.OpenRead(InputFile);
             var cabinetBinaryReader = new BinaryReader(cabinetFileStream);
@@ -215,6 +215,7 @@ namespace Cabinet.NET
 
                             if (IsFirstBlock)
                             {
+                                progressCallBack.Invoke(mapping.fileName);
                                 start = mapping.startingBlockOffset;
                             }
 
