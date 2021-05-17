@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace Cabinet.NET
+namespace Cabinet
 {
     public static class CabinetExtractor
     {

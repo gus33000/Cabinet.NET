@@ -1,7 +1,7 @@
 ﻿using System.IO;
 using System.Runtime.InteropServices;
 
-namespace Cabinet.NET
+namespace Cabinet
 {
     internal static class StreamExtensions
     {

@@ -1,4 +1,4 @@
-﻿using Cabinet.NET;
+﻿using Cabinet;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -15,9 +15,9 @@ namespace CabStuff
 
             List<string> failedFiles = new List<string>();
 
-            foreach (var input in Directory.EnumerateFiles(@"D:\Backup\win-x64\10.0.21382.1.co_release.210511-1416_arm64fre_e5c131864586\FeaturesOnDemand\neutral\cabs", "*.cab"))
+            //foreach (var input in Directory.EnumerateFiles(@"D:\Backup\win-x64\10.0.21382.1.co_release.210511-1416_arm64fre_e5c131864586\FeaturesOnDemand\neutral\cabs", "*.cab"))
             {
-                //string input = "C:\\Users\\Gus\\AppData\\Local\\Temp\\tmp82C3.tmp";
+                string input = @"D:\Backup\win-x64\10.0.21382.1.co_release.210511-1416_arm64fre_e5c131864586\_desktopdeployment.cab";
                 bool PASS = true;
                 string name = Path.GetFileName(input);
                 string output = Path.Combine(outputDir, name);
@@ -39,7 +39,7 @@ namespace CabStuff
                     failedFiles.Add(name);
                 }
 
-                break;
+                //break;
             }
 
             Console.WriteLine("\nFAILEDFILES\n");
